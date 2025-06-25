@@ -4,60 +4,61 @@ schema {
   subscription: Subscription
 }
 
-enum EmailCategory @aws_cognito_user_pools{
+type Attachment @aws_cognito_user_pools {
+  filename: String!
+  s3_key: String!
+}
+
+type AIInsight @aws_cognito_user_pools {
+  summary: String
+  category: String
+  sentiment: String
+  is_urgent: Boolean
+  keyDates: [AWSDate]
+  amounts: [String]
+  action_items: [String]
+  entities: [String]
+  links: [AWSURL]
+}
+
+enum EmailCategory @aws_cognito_user_pools {
   WORK
   PERSONAL
   PROMOTIONS
   OTHER
 }
 
-enum Sentiment @aws_cognito_user_pools{
+enum Sentiment @aws_cognito_user_pools {
   POSITIVE
   NEGATIVE
   NEUTRAL
   MIXED
 }
 
-enum UserStatus @aws_cognito_user_pools{
+enum UserStatus @aws_cognito_user_pools {
   ACTIVE
   INACTIVE
   SUSPENDED
   PENDING
 }
 
-type Attachment @aws_cognito_user_pools{
-  key: ID!
-  fileName: String
-  contentType: String
-  size: Int
-  url: String
-}
-input AttachmentInput @aws_cognito_user_pools{
-  key: ID!
-  fileName: String
-  contentType: String
-  size: Int
-  url: String
-}
-
-type Email @aws_cognito_user_pools{
-  emailId: ID!
-  userId: ID!
-  from: String!
-  to: [String!]!
-  cc: [String!]
+type Email @aws_cognito_user_pools {
+  userId: AWSEmail!
+  messageId: ID
+  from: AWSEmail!
+  fromName: String
+  to: AWSEmail!
+  cc: AWSEmail
+  bcc: AWSEmail
   subject: String
-  receivedTimestamp: AWSDateTime!
-  snippet: String
-  summary: String
-  category: EmailCategory
-  sentiment: Sentiment
+  date: String
+  plainBody: String
+  htmlBody: String
   attachments: [Attachment]
-  read: Boolean!
+  aiInsights: AIInsight
 }
 
-input EmailInput @aws_cognito_user_pools{
-
+input EmailInput @aws_cognito_user_pools {
   userId: ID!
   from: String!
   to: [String!]!
@@ -68,16 +69,16 @@ input EmailInput @aws_cognito_user_pools{
   summary: String
   category: EmailCategory
   sentiment: Sentiment
-  attachments: [AttachmentInput]
+
   read: Boolean!
 }
 
-type EmailConnection @aws_cognito_user_pools{
+type EmailConnection @aws_cognito_user_pools {
   items: [Email!]!
   nextToken: String
 }
 
-type User @aws_cognito_user_pools{
+type User @aws_cognito_user_pools {
   id: ID!
   email: String!
   userId: String!
@@ -89,7 +90,7 @@ type User @aws_cognito_user_pools{
   status: UserStatus
 }
 
-input CreateUserInput @aws_cognito_user_pools{
+input CreateUserInput @aws_cognito_user_pools {
   email: String!
   firstName: String!
   lastName: String!
@@ -101,23 +102,26 @@ input ListEmailsInput @aws_cognito_user_pools {
   nextToken: String
 }
 
-input ListByCategoryInput @aws_cognito_user_pools{
+input ListByCategoryInput @aws_cognito_user_pools {
   category: EmailCategory!
   limit: Int
   nextToken: String
 }
 
-input ListBySentimentInput @aws_cognito_user_pools{
+input ListBySentimentInput @aws_cognito_user_pools {
   sentiment: Sentiment!
   limit: Int
   nextToken: String
 }
 
 type Query {
-  listEmails(input: ListEmailsInput): EmailConnection @aws_cognito_user_pools
-  getEmail(emailId: ID!): Email @aws_cognito_user_pools
-  listEmailsByCategory(input: ListByCategoryInput): EmailConnection @aws_cognito_user_pools
-  listEmailsBySentiment(input: ListBySentimentInput): EmailConnection @aws_cognito_user_pools
+  listEmails(emailId: String!, limit: Int, nextToken: String): EmailConnection
+    @aws_cognito_user_pools
+  getEmail(emailId: String!, messageId: String!): Email @aws_cognito_user_pools
+  listEmailsByCategory(input: ListByCategoryInput): EmailConnection
+    @aws_cognito_user_pools
+  listEmailsBySentiment(input: ListBySentimentInput): EmailConnection
+    @aws_cognito_user_pools
   getUser(userId: ID!): User @aws_cognito_user_pools
 }
 
@@ -129,6 +133,5 @@ type Mutation {
 }
 
 type Subscription {
-  onNewEmail(userId: ID!): Email
-    @aws_subscribe(mutations: ["notifyNewEmail"])
+  onNewEmail(userId: ID!): Email @aws_subscribe(mutations: ["notifyNewEmail"])
 }

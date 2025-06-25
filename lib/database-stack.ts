@@ -21,7 +21,6 @@ export class DatabaseConstruct extends Construct {
       sortKey: { name: "SK", type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       removalPolicy: RemovalPolicy.DESTROY,
-
     });
 
     // Add GSI1: emailsByCategory
@@ -42,8 +41,14 @@ export class DatabaseConstruct extends Construct {
         "receivedTimestamp",
         "attachments",
         "category",
-        "email"
+        "email",
       ],
+    });
+    this.aiEmailClientTable.addGlobalSecondaryIndex({
+      indexName: "listEmailsPerUser",
+      partitionKey: { name: "PK", type: AttributeType.STRING },
+      sortKey: { name: "SK", type: AttributeType.STRING },
+      projectionType: ProjectionType.ALL,
     });
 
     // Add GSI2: emailsBySentiment
@@ -63,7 +68,7 @@ export class DatabaseConstruct extends Construct {
         "summary",
         "receivedTimestamp",
         "read",
-        "email"
+        "email",
       ],
     });
 
@@ -73,13 +78,7 @@ export class DatabaseConstruct extends Construct {
       partitionKey: { name: "GSI3PK", type: AttributeType.STRING },
       sortKey: { name: "GSI3SK", type: AttributeType.STRING },
       projectionType: ProjectionType.INCLUDE,
-      nonKeyAttributes: [
-        "userId",
-        "emailId",
-        "firstName",
-        "lastName",
-        "email"
-      ],
+      nonKeyAttributes: ["userId", "emailId", "firstName", "lastName", "email"],
     });
 
     // Add GSI4: emailsByUser

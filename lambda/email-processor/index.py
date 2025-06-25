@@ -135,9 +135,9 @@ def lambda_handler(event: S3Event, context):
             "bcc": msg.get("bcc"),
             "subject": msg.get("subject"),
             "date": msg.get("date"),
-            "message_id": msg.get("message-id"),
-            "plain_body": "",
-            "html_body": "",
+            "messageId": msg.get("message-id"),
+            "plainBody": "",
+            "htmlBody": "",
             "attachments": [],
         }
         print(f"E-mail metadata  email_metadata={out}")
@@ -156,22 +156,22 @@ def lambda_handler(event: S3Event, context):
                 s3.put_object(Body=data, Bucket=ATTACH_BUCKET, Key=s3_key)
                 out["attachments"].append({"filename": fname, "s3_key": s3_key})
 
-            elif ctype == "text/plain" and not out["plain_body"]:
-                out["plain_body"] = data
-            elif ctype == "text/html" and not out["html_body"]:
-                out["html_body"] = data
+            elif ctype == "text/plain" and not out["plainBody"]:
+                out["plainBody"] = data
+            elif ctype == "text/html" and not out["htmlBody"]:
+                out["htmlBody"] = data
 
         addrs = [addr for _name, addr in utils.getaddresses([out["to"] or ""])]
         to_addr = addrs[0] if addrs else "unknown@example.com"
 
         name, addr = utils.parseaddr(msg.get("from"))
-        out["from_name"] = name
+        out["fromName"] = name
         out["from"] = addr
 
         logger.info("Parsed e-mail", email_metadata=out)
         item = {
             "PK": f"USER#{to_addr}",
-            "SK": f"EMAIL#{out['message_id'].strip('<>')}",
+            "SK": f"EMAIL#{out['messageId'].strip('<>')}",
             "userId": to_addr,
             **out,
         }
@@ -189,7 +189,7 @@ def lambda_handler(event: S3Event, context):
             logger.info(f"Agent response {response.message['content'][0]['text']}")
             json_response = json.loads(response.message["content"][0]["text"])
             logger.info(f"Agent response {json_response}")
-            item["ai_response"] = json_response
+            item["aiInsights"] = json_response
             logger.info(f"Agent response item {item}")
 
             dynamodb_response = table.put_item(Item=item)

@@ -172,6 +172,7 @@ def lambda_handler(event: S3Event, context):
         item = {
             "PK": f"USER#{to_addr}",
             "SK": f"EMAIL#{out['messageId'].strip('<>')}",
+            "entity": "EMAIL",
             "userId": to_addr,
             **out,
         }

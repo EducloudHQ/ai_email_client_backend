@@ -21,6 +21,7 @@ export class DatabaseConstruct extends Construct {
       sortKey: { name: "SK", type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       removalPolicy: RemovalPolicy.DESTROY,
+      stream: StreamViewType.NEW_IMAGE,
     });
 
     // Add GSI1: emailsByCategory

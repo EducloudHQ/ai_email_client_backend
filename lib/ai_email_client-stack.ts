@@ -17,13 +17,15 @@ export class AiEmailClientStack extends cdk.Stack {
     super(scope, id, props);
 
     // Create the database stack
-    const database = new DatabaseConstruct(this, "Database");
+    const database = new DatabaseConstruct(this, "ai-email-Database");
 
     // Create the API stack
-    const api = new ApiStack(this, "Api", database);
+    const api = new ApiStack(this, "ai-email-api", {
+      database: database.aiEmailClientTable,
+    });
 
     // Create S3 bucket for raw emails
-    const emailBucket = new s3.Bucket(this, "EmailBucket", {
+    const emailBucket = new s3.Bucket(this, "AiEmailBucket", {
       bucketName: `${this.account}-${this.region}-email-bucket`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       encryption: s3.BucketEncryption.S3_MANAGED,

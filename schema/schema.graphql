@@ -4,12 +4,12 @@ schema {
   subscription: Subscription
 }
 
-type Attachment @aws_cognito_user_pools {
+type Attachment @aws_cognito_user_pools @aws_iam {
   filename: String!
   s3_key: String!
 }
 
-type AIInsight @aws_cognito_user_pools {
+type AIInsight @aws_cognito_user_pools @aws_iam {
   summary: String
   category: String
   sentiment: String
@@ -21,14 +21,14 @@ type AIInsight @aws_cognito_user_pools {
   links: [AWSURL]
 }
 
-enum EmailCategory @aws_cognito_user_pools {
+enum EmailCategory @aws_cognito_user_pools @aws_iam {
   WORK
   PERSONAL
   PROMOTIONS
   OTHER
 }
 
-enum Sentiment @aws_cognito_user_pools {
+enum Sentiment @aws_cognito_user_pools @aws_iam {
   POSITIVE
   NEGATIVE
   NEUTRAL
@@ -41,12 +41,17 @@ enum UserStatus @aws_cognito_user_pools {
   SUSPENDED
   PENDING
 }
+enum ENTITY {
+  USER
+  EMAIL
+}
 
-type Email @aws_cognito_user_pools {
+type Email @aws_cognito_user_pools @aws_iam {
   userId: AWSEmail!
   messageId: ID
   from: AWSEmail!
   fromName: String
+  entity: ENTITY
   to: AWSEmail!
   cc: AWSEmail
   bcc: AWSEmail
@@ -58,7 +63,7 @@ type Email @aws_cognito_user_pools {
   aiInsights: AIInsight
 }
 
-input EmailInput @aws_cognito_user_pools {
+input EmailInput @aws_cognito_user_pools @aws_iam {
   userId: ID!
   from: String!
   to: [String!]!
@@ -67,6 +72,7 @@ input EmailInput @aws_cognito_user_pools {
   receivedTimestamp: AWSDateTime!
   snippet: String
   summary: String
+  entity: ENTITY
   category: EmailCategory
   sentiment: Sentiment
 
@@ -129,7 +135,9 @@ type Mutation {
   createUser(input: CreateUserInput!): String! @aws_cognito_user_pools
   markAsRead(emailId: ID!): Email @aws_cognito_user_pools
   deleteEmail(emailId: ID!): Email @aws_cognito_user_pools
-  notifyNewEmail(userId: ID!, email: EmailInput!): Email @aws_cognito_user_pools
+  notifyNewEmail(userId: ID!, email: EmailInput!): Email
+    @aws_cognito_user_pools
+    @aws_iam
 }
 
 type Subscription {

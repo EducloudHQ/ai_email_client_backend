@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import * as cdk from "aws-cdk-lib";
 import { AiEmailClientStack } from "../lib/ai_email_client-stack";
 

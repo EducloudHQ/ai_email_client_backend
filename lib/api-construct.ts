@@ -10,9 +10,11 @@ import * as events from "aws-cdk-lib/aws-events";
 import { FunctionRuntime } from "aws-cdk-lib/aws-appsync";
 import path from "path";
 import { AccountRecovery, UserPoolClient } from "aws-cdk-lib/aws-cognito";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
 export interface ApiConstructProps {
   database: cdk.aws_dynamodb.Table;
+  sendEmailLambdaFunction: NodejsFunction;
 }
 
 export class ApiConstruct extends Construct {
@@ -28,7 +30,7 @@ export class ApiConstruct extends Construct {
   ) {
     super(scope, id);
 
-    const { database } = props;
+    const { database, sendEmailLambdaFunction } = props;
 
     // Create Cognito User Pool
     this.userPool = new cognito.UserPool(this, "EmailClientUserPool", {
@@ -294,6 +296,19 @@ export class ApiConstruct extends Construct {
         ),
       }
     );
+    this.api
+      .addLambdaDataSource(
+        "invokeSendEmailLambdaDatasource",
+        sendEmailLambdaFunction
+      )
+      .createResolver("sendEmailLambdaFunctionResolver", {
+        typeName: "Mutation",
+        fieldName: "sendEmail",
+        code: appsync.Code.fromAsset(
+          path.join(__dirname, "../resolvers/invoke/invoke.js")
+        ),
+        runtime: appsync.FunctionRuntime.JS_1_0_0,
+      });
 
     this.api.createResolver(
       "listEmailsResolver",

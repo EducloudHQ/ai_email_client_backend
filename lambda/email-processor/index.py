@@ -1,6 +1,7 @@
 import os
 import json
 import boto3
+from ksuid import Ksuid
 from email import policy, utils
 from email.parser import BytesParser
 from urllib.parse import unquote_plus
@@ -17,6 +18,7 @@ bedrock_model = BedrockModel(
     region_name="us-east-1",
     temperature=0.3,
 )
+unique_email_id = str(Ksuid())
 s3 = boto3.client("s3")
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["TABLE_NAME"])
@@ -171,9 +173,10 @@ def lambda_handler(event: S3Event, context):
         logger.info("Parsed e-mail", email_metadata=out)
         item = {
             "PK": f"USER#{to_addr}",
-            "SK": f"EMAIL#{out['messageId'].strip('<>')}",
+            "SK": f"EMAIL#{unique_email_id}#{out['messageId'].strip('<>')}",
             "entity": "EMAIL",
             "userId": to_addr,
+            "direction": "INBOUND",
             **out,
         }
 
@@ -192,9 +195,9 @@ def lambda_handler(event: S3Event, context):
             logger.info(f"Agent response {json_response}")
             item["aiInsights"] = json_response
             item["GSI1PK"] = f"USER#{to_addr}"
-            item["GSI1SK"] = json_response["category"]
+            item["GSI1SK"] = f"CATEGORY#{json_response['category']}"
             item["GSI2PK"] = f"USER#{to_addr}"
-            item["GSI2SK"] = json_response["sentiment"]
+            item["GSI2SK"] = f"SENTIMENT#{json_response['sentiment']}"
             logger.info(f"Agent response item {item}")
 
             dynamodb_response = table.put_item(Item=item)

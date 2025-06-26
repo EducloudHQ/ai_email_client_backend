@@ -21,21 +21,21 @@ type AIInsight @aws_cognito_user_pools @aws_iam {
   links: [AWSURL]
 }
 
-enum EmailCategory @aws_cognito_user_pools @aws_iam {
+enum EmailCategory {
   WORK
   PERSONAL
   PROMOTIONS
   OTHER
 }
 
-enum Sentiment @aws_cognito_user_pools @aws_iam {
+enum Sentiment {
   POSITIVE
   NEGATIVE
   NEUTRAL
   MIXED
 }
 
-enum UserStatus @aws_cognito_user_pools {
+enum UserStatus {
   ACTIVE
   INACTIVE
   SUSPENDED
@@ -44,6 +44,33 @@ enum UserStatus @aws_cognito_user_pools {
 enum ENTITY {
   USER
   EMAIL
+}
+
+enum EmailSendStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+input SendEmailInput @aws_cognito_user_pools {
+  userId: String!
+  from: String!
+  to: [String!]!
+  cc: [String!]
+  bcc: [String!]
+  subject: String
+  plainBody: String
+  htmlBody: String
+  attachments: [AttachmentInput]
+}
+
+input AttachmentInput @aws_cognito_user_pools {
+  filename: String!
+  s3_key: String!
+}
+enum Direction {
+  INBOUND
+  OUTBOUND
 }
 
 type Email @aws_cognito_user_pools @aws_iam {
@@ -55,6 +82,7 @@ type Email @aws_cognito_user_pools @aws_iam {
   cc: AWSEmail
   bcc: AWSEmail
   subject: String
+  direction: Direction
   date: String
   plainBody: String
   htmlBody: String
@@ -62,7 +90,7 @@ type Email @aws_cognito_user_pools @aws_iam {
   aiInsights: AIInsight
 }
 
-input EmailInput @aws_cognito_user_pools @aws_iam {
+input EmailInput @aws_cognito_user_pools {
   userId: ID!
   from: String!
   to: [String!]!
@@ -74,7 +102,6 @@ input EmailInput @aws_cognito_user_pools @aws_iam {
   entity: ENTITY
   category: EmailCategory
   sentiment: Sentiment
-
   read: Boolean!
 }
 
@@ -108,13 +135,13 @@ input ListEmailsInput @aws_cognito_user_pools {
 }
 
 input ListByCategoryInput @aws_cognito_user_pools {
-  category: String!
+  category: EmailCategory
   limit: Int
   nextToken: String
 }
 
 input ListBySentimentInput @aws_cognito_user_pools {
-  sentiment: String!
+  sentiment: Sentiment
   limit: Int
   nextToken: String
 }
@@ -133,6 +160,7 @@ type Query {
 type Mutation {
   createUser(input: CreateUserInput!): String! @aws_cognito_user_pools
   markAsRead(emailId: ID!): Email @aws_cognito_user_pools
+  sendEmail(input: SendEmailInput!): Boolean! @aws_cognito_user_pools
   deleteEmail(emailId: ID!): Email @aws_cognito_user_pools
   notifyNewEmail(userId: ID!, email: EmailInput!): Email
     @aws_cognito_user_pools

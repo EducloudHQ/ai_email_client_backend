@@ -12,9 +12,34 @@ import * as actions from "aws-cdk-lib/aws-ses-actions";
 import * as route53 from "aws-cdk-lib/aws-route53";
 
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 export class AiEmailClientStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+    const envVariables = {
+      // AWS_ACCOUNT_ID: Stack.of(this).account,
+      POWERTOOLS_SERVICE_NAME: "ai-email-app",
+      POWERTOOLS_LOGGER_LOG_LEVEL: "WARN",
+      POWERTOOLS_LOGGER_SAMPLE_RATE: "0.01",
+      POWERTOOLS_LOGGER_LOG_EVENT: "true",
+      POWERTOOLS_METRICS_NAMESPACE: "AiEmailApp",
+    };
+
+    // Create the schedule posts function
+    const sendEmailFunction = new NodejsFunction(this, "SendEmailFunction", {
+      entry: "./lambda/sendEmail.ts",
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      memorySize: 256,
+      logRetention: cdk.aws_logs.RetentionDays.ONE_WEEK,
+      tracing: lambda.Tracing.ACTIVE,
+      environment: {
+        ...envVariables,
+      },
+      bundling: {
+        minify: true,
+      },
+    });
 
     // Create the database stack
     const database = new DatabaseConstruct(this, "ai-email-Database");
@@ -22,6 +47,7 @@ export class AiEmailClientStack extends cdk.Stack {
     // Create the API stack
     const api = new ApiConstruct(this, "ai-email-api-construct", {
       database: database.aiEmailClientTable,
+      sendEmailLambdaFunction: sendEmailFunction,
     });
 
     // Create S3 bucket for raw emails
@@ -37,14 +63,12 @@ export class AiEmailClientStack extends cdk.Stack {
       ],
     });
 
-    const envVariables = {
-      // AWS_ACCOUNT_ID: Stack.of(this).account,
-      POWERTOOLS_SERVICE_NAME: "ai-email-app",
-      POWERTOOLS_LOGGER_LOG_LEVEL: "WARN",
-      POWERTOOLS_LOGGER_SAMPLE_RATE: "0.01",
-      POWERTOOLS_LOGGER_LOG_EVENT: "true",
-      POWERTOOLS_METRICS_NAMESPACE: "AiEmailApp",
-    };
+    sendEmailFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ses:SendEmail"],
+        resources: ["*"],
+      })
+    );
 
     const emailProcessor = new PythonFunction(this, "emailProcessingFunction", {
       entry: "./lambda/email-processor/",

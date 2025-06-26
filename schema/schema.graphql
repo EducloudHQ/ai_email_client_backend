@@ -51,7 +51,6 @@ type Email @aws_cognito_user_pools @aws_iam {
   messageId: ID
   from: AWSEmail!
   fromName: String
-  entity: ENTITY
   to: AWSEmail!
   cc: AWSEmail
   bcc: AWSEmail
@@ -109,13 +108,13 @@ input ListEmailsInput @aws_cognito_user_pools {
 }
 
 input ListByCategoryInput @aws_cognito_user_pools {
-  category: EmailCategory!
+  category: String!
   limit: Int
   nextToken: String
 }
 
 input ListBySentimentInput @aws_cognito_user_pools {
-  sentiment: Sentiment!
+  sentiment: String!
   limit: Int
   nextToken: String
 }

@@ -6,18 +6,16 @@ import * as appsync from "aws-cdk-lib/aws-appsync";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as pipes from "aws-cdk-lib/aws-pipes";
-import { DatabaseConstruct } from "./database-stack";
 import * as events from "aws-cdk-lib/aws-events";
 import { FunctionRuntime } from "aws-cdk-lib/aws-appsync";
 import path from "path";
 import { AccountRecovery, UserPoolClient } from "aws-cdk-lib/aws-cognito";
-import { Table } from "aws-cdk-lib/aws-dynamodb";
 
 export interface ApiConstructProps {
   database: cdk.aws_dynamodb.Table;
 }
 
-export class ApiStack extends cdk.Stack {
+export class ApiConstruct extends Construct {
   public readonly api: appsync.GraphqlApi;
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
@@ -131,15 +129,13 @@ export class ApiStack extends cdk.Stack {
     });
 
     // Grant permissions to the pipe role
-    //database.grantStreamRead(pipeRole);
+    database.grantStreamRead(pipeRole);
     eventBus.grantPutEventsTo(pipeRole);
 
     // Create EventBridge Pipe to connect new DynamoDB items to EventBridge
     new pipes.CfnPipe(this, "AiEmailClientPipe", {
       roleArn: pipeRole.roleArn,
-      source: "",
-
-      //source: database.tableStreamArn!,
+      source: database.tableStreamArn!,
       sourceParameters: {
         dynamoDbStreamParameters: {
           startingPosition: "LATEST",
@@ -213,7 +209,6 @@ export class ApiStack extends cdk.Stack {
                 messageId
                 from
                 fromName
-                entity
                 to
                 cc
                 bcc
@@ -244,7 +239,7 @@ export class ApiStack extends cdk.Stack {
           },
           inputTransformer: {
             inputPathsMap: {
-              userId: "$.detail.userId", // event.detail.userId
+              userId: "$.detail.userId",
               email: "$.detail.email",
             },
             inputTemplate: JSON.stringify({

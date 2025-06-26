@@ -191,6 +191,10 @@ def lambda_handler(event: S3Event, context):
             json_response = json.loads(response.message["content"][0]["text"])
             logger.info(f"Agent response {json_response}")
             item["aiInsights"] = json_response
+            item["GSI1PK"] = f"USER#{to_addr}"
+            item["GSI1SK"] = json_response["category"]
+            item["GSI2PK"] = f"USER#{to_addr}"
+            item["GSI2SK"] = json_response["sentiment"]
             logger.info(f"Agent response item {item}")
 
             dynamodb_response = table.put_item(Item=item)

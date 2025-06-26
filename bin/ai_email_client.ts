@@ -1,5 +1,5 @@
 import * as cdk from "aws-cdk-lib";
-import { AiEmailClientStack } from "../lib/ai_email_client-stack";
+import { AiEmailClientStack } from "../lib/ai-email-client-stack";
 
 const app = new cdk.App();
 new AiEmailClientStack(app, "AiEmailClientStack", {

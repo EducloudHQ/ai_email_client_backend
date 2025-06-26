@@ -6,8 +6,8 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import { Duration } from "aws-cdk-lib";
-import { DatabaseConstruct } from "./database-stack";
-import { ApiStack } from "./api-stack";
+import { DatabaseConstruct } from "./database-construct";
+import { ApiConstruct } from "./api-construct";
 import * as actions from "aws-cdk-lib/aws-ses-actions";
 import * as route53 from "aws-cdk-lib/aws-route53";
 
@@ -20,7 +20,7 @@ export class AiEmailClientStack extends cdk.Stack {
     const database = new DatabaseConstruct(this, "ai-email-Database");
 
     // Create the API stack
-    const api = new ApiStack(this, "ai-email-api", {
+    const api = new ApiConstruct(this, "ai-email-api-construct", {
       database: database.aiEmailClientTable,
     });
 
@@ -32,7 +32,7 @@ export class AiEmailClientStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       lifecycleRules: [
         {
-          expiration: Duration.days(90), // Keep emails for 90 days
+          expiration: Duration.days(90),
         },
       ],
     });
@@ -78,10 +78,12 @@ export class AiEmailClientStack extends cdk.Stack {
     // Add S3 event notification to trigger Lambda
     emailBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED,
-      new s3n.LambdaDestination(emailProcessor)
+      new s3n.LambdaDestination(emailProcessor),
+      {
+        prefix: "emails/",
+      }
     );
 
-    /* 2️⃣  Route 53 MX record → SES inbound endpoint */
     const hostedZone = route53.HostedZone.fromLookup(this, "Zone", {
       domainName: "846agents.com",
     });

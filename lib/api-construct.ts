@@ -325,6 +325,34 @@ export class ApiConstruct extends Construct {
     );
 
     this.api.createResolver(
+      "listEmailsBySentimentResolver",
+
+      {
+        typeName: "Query",
+        fieldName: "listEmailsBySentiment",
+        dataSource: aiEmailClientTableDS,
+        runtime: FunctionRuntime.JS_1_0_0,
+        code: appsync.Code.fromAsset(
+          path.join(__dirname, "../resolvers/emails/listEmailsBySentiment.js")
+        ),
+      }
+    );
+
+    this.api.createResolver(
+      "listEmailsByCategoryResolver",
+
+      {
+        typeName: "Query",
+        fieldName: "listEmailsByCategory",
+        dataSource: aiEmailClientTableDS,
+        runtime: FunctionRuntime.JS_1_0_0,
+        code: appsync.Code.fromAsset(
+          path.join(__dirname, "../resolvers/emails/listEmailsByCategory.js")
+        ),
+      }
+    );
+
+    this.api.createResolver(
       "getEmailResolver",
 
       {

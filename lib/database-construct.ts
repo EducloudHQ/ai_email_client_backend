@@ -26,51 +26,25 @@ export class DatabaseConstruct extends Construct {
 
     // Add GSI1: emailsByCategory
     this.aiEmailClientTable.addGlobalSecondaryIndex({
-      indexName: "emailsByCategory",
+      indexName: "listEmailsByCategory",
       partitionKey: { name: "GSI1PK", type: AttributeType.STRING },
       sortKey: { name: "GSI1SK", type: AttributeType.STRING },
-      projectionType: ProjectionType.INCLUDE,
-      nonKeyAttributes: [
-        "userId",
-        "emailId",
-        "subject",
-        "from",
-        "to",
-        "cc",
-        "bodySnippet",
-        "summary",
-        "receivedTimestamp",
-        "attachments",
-        "category",
-        "email",
-      ],
-    });
-    this.aiEmailClientTable.addGlobalSecondaryIndex({
-      indexName: "listEmailsPerUser",
-      partitionKey: { name: "PK", type: AttributeType.STRING },
-      sortKey: { name: "SK", type: AttributeType.STRING },
       projectionType: ProjectionType.ALL,
     });
 
     // Add GSI2: emailsBySentiment
     this.aiEmailClientTable.addGlobalSecondaryIndex({
-      indexName: "emailsBySentiment",
+      indexName: "listEmailsBySentiment",
       partitionKey: { name: "GSI2PK", type: AttributeType.STRING },
       sortKey: { name: "GSI2SK", type: AttributeType.STRING },
-      projectionType: ProjectionType.INCLUDE,
-      nonKeyAttributes: [
-        "userId",
-        "emailId",
-        "subject",
-        "from",
-        "to",
-        "cc",
-        "bodySnippet",
-        "summary",
-        "receivedTimestamp",
-        "read",
-        "email",
-      ],
+      projectionType: ProjectionType.ALL,
+    });
+
+    this.aiEmailClientTable.addGlobalSecondaryIndex({
+      indexName: "listEmailsPerUser",
+      partitionKey: { name: "PK", type: AttributeType.STRING },
+      sortKey: { name: "SK", type: AttributeType.STRING },
+      projectionType: ProjectionType.ALL,
     });
 
     // Add GSI3: getAllUsers

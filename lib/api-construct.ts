@@ -193,8 +193,8 @@ export class ApiConstruct extends Construct {
     new events.CfnRule(this, "NotifyNewEmailCreated", {
       eventBusName: eventBus.eventBusName,
       eventPattern: {
-        source: ["email.created"],
-        "detail-type": ["email.new"],
+        source: ["ai.email"],
+        "detail-type": ["NewEmailCreated"],
       },
       targets: [
         {
@@ -204,22 +204,19 @@ export class ApiConstruct extends Construct {
           roleArn: appSyncEventBridgeRole.roleArn,
           appSyncParameters: {
             graphQlOperation: `
-            mutation NotifyNewEmail($userId: ID!, $email: EmailInput!) {
-              notifyNewEmail(userId: $userId, email: $email) {
-
+            mutation NotifyNewEmail($email: EmailInput!) {
+              notifyNewEmail(email: $email) {
                 userId
                 messageId
                 from
                 fromName
                 to
-                cc
-                bcc
                 subject
                 date
                 plainBody
+                entity
+                direction
                 htmlBody
-
-
                 attachments {
                   filename
                   s3_key
@@ -235,18 +232,45 @@ export class ApiConstruct extends Construct {
                   entities
                   links
                 }
+
+
               }
             }
           `,
           },
           inputTransformer: {
             inputPathsMap: {
-              userId: "$.detail.userId",
-              email: "$.detail.email",
+              userId: "$.detail.email.userId.S",
+              messageId: "$.detail.email.messageId.S",
+              from: "$.detail.email.from.S",
+              fromName: "$.detail.email.fromName.S",
+              to: "$.detail.email.to.S",
+              subject: "$.detail.email.subject.S",
+              date: "$.detail.email.date.S",
+              entity: "$.detail.email.entity.S",
+              plainBody: "$.detail.email.plainBody.S",
+              htmlBody: "$.detail.email.htmlBody.S",
+              sentiment: "$.detail.email.sentiment.S",
+              direction: "$.detail.email.direction.S",
+              attachments: "$.detail.email.attachments.M",
+              aiInsights: "$.detail.email.aiInsights.L",
             },
             inputTemplate: JSON.stringify({
-              userId: "<userId>",
-              email: "<email>",
+              email: {
+                userId: "<userId>",
+                messageId: "<messageId>",
+                from: "<from>",
+                fromName: "<fromName>",
+                to: "<to>",
+                subject: "<subject>",
+                date: "<date>",
+                direction: "<direction>",
+                entity: "<entity>",
+                plainBody: "<plainBody>",
+                htmlBody: "<htmlBody>",
+                attachments: "<attachments>",
+                aiInsights: "<aiInsights>",
+              },
             }),
           },
         },

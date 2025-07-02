@@ -21,6 +21,18 @@ type AIInsight @aws_cognito_user_pools @aws_iam {
   links: [AWSURL]
 }
 
+input AIInsightInput @aws_cognito_user_pools @aws_iam {
+  summary: String
+  category: String
+  sentiment: String
+  is_urgent: Boolean
+  keyDates: [AWSDate]
+  amounts: [String]
+  action_items: [String]
+  entities: [String]
+  links: [AWSURL]
+}
+
 enum EmailCategory {
   WORK
   PERSONAL
@@ -64,7 +76,7 @@ input SendEmailInput @aws_cognito_user_pools {
   attachments: [AttachmentInput]
 }
 
-input AttachmentInput @aws_cognito_user_pools {
+input AttachmentInput @aws_cognito_user_pools @aws_iam {
   filename: String!
   s3_key: String!
 }
@@ -74,15 +86,14 @@ enum Direction {
 }
 
 type Email @aws_cognito_user_pools @aws_iam {
-  userId: AWSEmail!
+  userId: AWSEmail
   messageId: ID
-  from: AWSEmail!
+  from: AWSEmail
   fromName: String
-  to: AWSEmail!
-  cc: AWSEmail
-  bcc: AWSEmail
+  to: AWSEmail
   subject: String
   direction: Direction
+  entity: ENTITY
   date: String
   plainBody: String
   htmlBody: String
@@ -90,19 +101,20 @@ type Email @aws_cognito_user_pools @aws_iam {
   aiInsights: AIInsight
 }
 
-input EmailInput @aws_cognito_user_pools {
-  userId: ID!
-  from: String!
-  to: [String!]!
-  cc: [String!]
+input EmailInput @aws_cognito_user_pools @aws_iam {
+  userId: AWSEmail
+  messageId: ID
+  from: AWSEmail
+  fromName: String
+  to: AWSEmail
   subject: String
-  receivedTimestamp: AWSDateTime!
-  snippet: String
-  summary: String
+  direction: Direction
   entity: ENTITY
-  category: EmailCategory
-  sentiment: Sentiment
-  read: Boolean!
+  date: String
+  plainBody: String
+  htmlBody: String
+  attachments: [AttachmentInput]
+  aiInsights: AIInsightInput
 }
 
 type EmailConnection @aws_cognito_user_pools {
@@ -162,11 +174,11 @@ type Mutation {
   markAsRead(emailId: ID!): Email @aws_cognito_user_pools
   sendEmail(input: SendEmailInput!): Boolean! @aws_cognito_user_pools
   deleteEmail(emailId: ID!): Email @aws_cognito_user_pools
-  notifyNewEmail(userId: ID!, email: EmailInput!): Email
-    @aws_cognito_user_pools
-    @aws_iam
+  notifyNewEmail(email: EmailInput!): Email @aws_cognito_user_pools @aws_iam
 }
 
 type Subscription {
-  onNewEmail(userId: ID!): Email @aws_subscribe(mutations: ["notifyNewEmail"])
+  onNewEmail: Email
+    @aws_cognito_user_pools
+    @aws_subscribe(mutations: ["notifyNewEmail"])
 }

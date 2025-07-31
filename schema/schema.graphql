@@ -4,12 +4,12 @@ schema {
   subscription: Subscription
 }
 
-type Attachment @aws_cognito_user_pools @aws_iam {
+type Attachment @aws_api_key @aws_iam {
   filename: String!
   s3_key: String!
 }
 
-type AIInsight @aws_cognito_user_pools @aws_iam {
+type AIInsight @aws_api_key @aws_iam {
   summary: String
   category: String
   sentiment: String
@@ -18,10 +18,11 @@ type AIInsight @aws_cognito_user_pools @aws_iam {
   amounts: [String]
   action_items: [String]
   entities: [String]
+  summaryAudioUrl: String
   links: [AWSURL]
 }
 
-input AIInsightInput @aws_cognito_user_pools @aws_iam {
+input AIInsightInput @aws_api_key @aws_iam {
   summary: String
   category: String
   sentiment: String
@@ -64,7 +65,7 @@ enum EmailSendStatus {
   FAILED
 }
 
-input SendEmailInput @aws_cognito_user_pools {
+input SendEmailInput @aws_api_key {
   userId: String!
   from: String!
   to: [String!]!
@@ -76,7 +77,7 @@ input SendEmailInput @aws_cognito_user_pools {
   attachments: [AttachmentInput]
 }
 
-input AttachmentInput @aws_cognito_user_pools @aws_iam {
+input AttachmentInput @aws_api_key @aws_iam {
   filename: String!
   s3_key: String!
 }
@@ -85,7 +86,7 @@ enum Direction {
   OUTBOUND
 }
 
-type Email @aws_cognito_user_pools @aws_iam {
+type Email @aws_api_key @aws_iam {
   userId: AWSEmail
   messageId: ID
   from: AWSEmail
@@ -101,7 +102,7 @@ type Email @aws_cognito_user_pools @aws_iam {
   aiInsights: AIInsight
 }
 
-input EmailInput @aws_cognito_user_pools @aws_iam {
+input EmailInput @aws_api_key @aws_iam {
   userId: AWSEmail
   messageId: ID
   from: AWSEmail
@@ -117,12 +118,12 @@ input EmailInput @aws_cognito_user_pools @aws_iam {
   aiInsights: AIInsightInput
 }
 
-type EmailConnection @aws_cognito_user_pools {
+type EmailConnection @aws_api_key {
   items: [Email!]!
   nextToken: String
 }
 
-type User @aws_cognito_user_pools {
+type User @aws_api_key {
   id: ID!
   email: String!
   userId: String!
@@ -134,25 +135,25 @@ type User @aws_cognito_user_pools {
   status: UserStatus
 }
 
-input CreateUserInput @aws_cognito_user_pools {
+input CreateUserInput @aws_api_key {
   email: String!
   firstName: String!
   lastName: String!
   status: UserStatus
 }
 
-input ListEmailsInput @aws_cognito_user_pools {
+input ListEmailsInput @aws_api_key {
   limit: Int
   nextToken: String
 }
 
-input ListByCategoryInput @aws_cognito_user_pools {
+input ListByCategoryInput @aws_api_key {
   emailId: String!
   limit: Int
   nextToken: String
 }
 
-input ListBySentimentInput @aws_cognito_user_pools {
+input ListBySentimentInput @aws_api_key {
   limit: Int
   nextToken: String
   emailId: String!
@@ -160,25 +161,23 @@ input ListBySentimentInput @aws_cognito_user_pools {
 
 type Query {
   listEmails(emailId: String!, limit: Int, nextToken: String): EmailConnection
-    @aws_cognito_user_pools
-  getEmail(emailId: String!, messageId: String!): Email @aws_cognito_user_pools
+    @aws_api_key
+  getEmail(emailId: String!, messageId: String!): Email @aws_api_key
   listEmailsByCategory(input: ListByCategoryInput!): EmailConnection
-    @aws_cognito_user_pools
+    @aws_api_key
   listEmailsBySentiment(input: ListBySentimentInput!): EmailConnection
-    @aws_cognito_user_pools
-  getUser(userId: ID!): User @aws_cognito_user_pools
+    @aws_api_key
+  getUser(userId: ID!): User @aws_api_key
 }
 
 type Mutation {
-  createUser(input: CreateUserInput!): String! @aws_cognito_user_pools
-  markAsRead(emailId: ID!): Email @aws_cognito_user_pools
-  sendEmail(input: SendEmailInput!): Boolean! @aws_cognito_user_pools
-  deleteEmail(emailId: ID!): Email @aws_cognito_user_pools
-  notifyNewEmail(email: EmailInput!): Email @aws_cognito_user_pools @aws_iam
+  createUser(input: CreateUserInput!): String! @aws_api_key
+  markAsRead(emailId: ID!): Email @aws_api_key
+  sendEmail(input: SendEmailInput!): Boolean! @aws_api_key
+  deleteEmail(emailId: ID!): Email @aws_api_key
+  notifyNewEmail(email: EmailInput!): Email @aws_api_key @aws_iam
 }
 
 type Subscription {
-  onNewEmail: Email
-    @aws_cognito_user_pools
-    @aws_subscribe(mutations: ["notifyNewEmail"])
+  onNewEmail: Email @aws_api_key @aws_subscribe(mutations: ["notifyNewEmail"])
 }

@@ -13,6 +13,9 @@ import * as route53 from "aws-cdk-lib/aws-route53";
 
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import path from "path";
+import { DynamoEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
+import { FilterCriteria, FilterRule } from "aws-cdk-lib/aws-lambda";
 export class AiEmailClientStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -86,6 +89,43 @@ export class AiEmailClientStack extends cdk.Stack {
       },
     });
 
+    // 🛠️ Lambda converts the email *summary* → speech and updates item
+    const convertFn = new NodejsFunction(this, "EmailSummaryTTSFn", {
+      entry: path.join(__dirname, "../lambda/convertSummary.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      memorySize: 512,
+      timeout: Duration.minutes(2),
+      tracing: lambda.Tracing.ACTIVE,
+      environment: {
+        ...envVariables,
+        TABLE_NAME: database.aiEmailClientTable.tableName,
+        BUCKET_NAME: emailBucket.bucketName,
+      },
+    });
+
+    convertFn.addEventSource(
+      new DynamoEventSource(database.aiEmailClientTable, {
+        startingPosition: lambda.StartingPosition.LATEST,
+        reportBatchItemFailures: true,
+        filters: [
+          FilterCriteria.filter({
+            eventName: ["INSERT"],
+          }),
+        ],
+      })
+    );
+
+    // 🔐 Least‑privilege permissions
+    database.aiEmailClientTable.grantReadWriteData(convertFn);
+    emailBucket.grantPut(convertFn);
+    convertFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["polly:SynthesizeSpeech"],
+        resources: ["*"], // Polly doesn’t support resource‑level scoping for voices
+      })
+    );
+
     // Grant permissions
     emailBucket.grantReadWrite(emailProcessor);
     database.aiEmailClientTable.grantWriteData(emailProcessor);
@@ -120,12 +160,12 @@ export class AiEmailClientStack extends cdk.Stack {
           hostName: `inbound-smtp.${this.region}.amazonaws.com`,
         },
       ],
-      // Name left blank == bare domain
     });
 
     // Create SES receipt rule set
     const ruleSet = new ses.ReceiptRuleSet(this, "AIEmailRuleSet", {
       dropSpam: true,
+
       rules: [
         {
           recipients: ["846agents.com"],
@@ -139,13 +179,6 @@ export class AiEmailClientStack extends cdk.Stack {
         },
       ],
     });
-    /*
-    // ⚠️ CDK marks the first rule set you create as ACTIVE automatically.
-    // If you already have another active set, comment out the following:
-    new ses.CfnReceiptRuleSet(this, "ActivateRuleSet", {
-      ruleSetName: ruleSet.receiptRuleSetName,
-    });
-    */
 
     // Add bucket policy to allow SES to access the bucket
     emailBucket.addToResourcePolicy(

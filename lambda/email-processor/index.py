@@ -1,5 +1,4 @@
 import os
-import json
 import boto3
 from ksuid import Ksuid
 from email import policy, utils
@@ -7,8 +6,7 @@ from email.parser import BytesParser
 from urllib.parse import unquote_plus
 from aws_lambda_powertools import Logger, Tracer
 from aws_lambda_powertools.utilities.data_classes import event_source, S3Event
-from strands import Agent
-
+import requests
 from strands.models import BedrockModel
 
 logger = Logger(service="email_parser")
@@ -164,45 +162,22 @@ def lambda_handler(event: S3Event, context):
                 out["htmlBody"] = data
 
         addrs = [addr for _name, addr in utils.getaddresses([out["to"] or ""])]
-        to_addr = addrs[0] if addrs else "unknown@example.com"
+        addrs[0] if addrs else "unknown@example.com"
 
         name, addr = utils.parseaddr(msg.get("from"))
         out["fromName"] = name
         out["from"] = addr
 
         logger.info("Parsed e-mail", email_metadata=out)
-        item = {
-            "PK": f"USER#{to_addr}",
-            "SK": f"EMAIL#{unique_email_id}#{out['messageId'].strip('<>')}",
-            "entity": "EMAIL",
-            "userId": to_addr,
-            "direction": "INBOUND",
-            **out,
-        }
+
+        url = "https://mp8bdmaxpf.us-east-1.awsapprunner.com/publish_event"
+
+        headers = {"Content-Type": "application/json"}
 
         try:
-            email_agent = Agent(
-                model=bedrock_model,
-                system_prompt=EMAIL_SYSTEM_PROMPT,
-            )
-            email_str = json.dumps(out, ensure_ascii=False)
+            requests.post(url, headers=headers, json=out)
 
-            response = email_agent(email_str)
+            logger.info("sent events to dapr agents")
 
-            logger.info(f"Agent response {response}")
-            logger.info(f"Agent response {response.message['content'][0]['text']}")
-            json_response = json.loads(response.message["content"][0]["text"])
-            logger.info(f"Agent response {json_response}")
-            item["aiInsights"] = json_response
-            item["GSI1PK"] = f"USER#{to_addr}"
-            item["GSI1SK"] = f"CATEGORY#{json_response['category']}"
-            item["GSI2PK"] = f"USER#{to_addr}"
-            item["GSI2SK"] = f"SENTIMENT#{json_response['sentiment']}"
-            logger.info(f"Agent response item {item}")
-
-            dynamodb_response = table.put_item(Item=item)
-            logger.info(f"DynamoDB response {dynamodb_response}")
-        except Exception as e:
-            logger.error(f"Error processing e-mail agent {e}")
-            # logger.error(f"DynamoDB error {e}")
-            raise e
+        except requests.exceptions.RequestException:
+            logger.info(" exception occured at {e}")

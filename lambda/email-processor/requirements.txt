@@ -5,3 +5,4 @@ ruff==0.9.1
 svix-ksuid
 strands-agents>=0.1.0
 strands-agents-tools>=0.1.0
+requests

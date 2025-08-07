@@ -60,17 +60,7 @@ export class ApiConstruct extends Construct {
         requireSymbols: true,
       },
     });
-    /*
-    // Create Cognito User Pool Client
-    this.userPoolClient = this.userPool.addClient("EmailClientApp", {
-      userPoolClientName: "ai-email-client-app",
-      authFlows: {
-        userPassword: true,
-        userSrp: true,
-      },
-      preventUserExistenceErrors: true,
-    });
-    */
+
     const userPoolClient: UserPoolClient = new UserPoolClient(
       this,
       "AiEmailUserPoolClient",
@@ -307,19 +297,6 @@ export class ApiConstruct extends Construct {
       code: appsync.Code.fromAsset("./resolvers/emails/notifyNewEmail.js"),
     });
 
-    this.api.createResolver(
-      "createUserResolver",
-
-      {
-        typeName: "Mutation",
-        fieldName: "createUser",
-        dataSource: aiEmailClientTableDS,
-        runtime: FunctionRuntime.JS_1_0_0,
-        code: appsync.Code.fromAsset(
-          path.join(__dirname, "../resolvers/user/createUser.js")
-        ),
-      }
-    );
     this.api
       .addLambdaDataSource(
         "invokeSendEmailLambdaDatasource",

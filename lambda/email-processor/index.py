@@ -1,104 +1,27 @@
 import os
+import json
 import boto3
+import uuid,time
 from ksuid import Ksuid
 from email import policy, utils
 from email.parser import BytesParser
 from urllib.parse import unquote_plus
-from aws_lambda_powertools import Logger, Tracer
+from aws_lambda_powertools import Logger
 from aws_lambda_powertools.utilities.data_classes import event_source, S3Event
-import requests
-from strands.models import BedrockModel
+
 
 logger = Logger(service="email_parser")
-tracer = Tracer(service="email_parser")  # uses env LOG_LEVEL / POWERTOOLS_SERVICE_NAME
-bedrock_model = BedrockModel(
-    model_id="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    region_name="us-east-1",
-    temperature=0.3,
-)
-unique_email_id = str(Ksuid())
+
+
+agent_core = boto3.client("bedrock-agentcore", region_name='us-east-1')
+
 s3 = boto3.client("s3")
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["TABLE_NAME"])
 ATTACH_BUCKET = os.environ["ATTACH_BUCKET"]
 
-EMAIL_SYSTEM_PROMPT = """
-You are an **AI Email Intelligence Assistant**. You can:
+unique_email_id = str(Ksuid())
 
-1. Parse RFC-822 e-mail objects that have already been converted to JSON
-   (headers, plain_body, html_body, attachments, etc.).
-2. Produce **succinct, user-friendly summaries** of the message body.
-3. Assign the message to one **category**:
-   “Work”, “Personal”, “Finance”, “Marketing / Promotions”,
-   “Social”, “Spam”, “Travel”, “Receipts”, or “Other”.
-4. Perform **sentiment analysis** of the sender’s tone
-   (Positive, Neutral, Negative, or Mixed).
-5. Extract and surface **key information**:
-   • dates & times
-   • monetary amounts & currencies
-   • action items / requests
-   • named people & organisations
-   • links & attachment filenames
-   • reply-by / due-by hints
-6. Flag messages that are **urgent** (requesting immediate action,
-   containing deadlines < 48 h, critical alert words, etc.).
-7. Return a single JSON object that the calling service can store in DynamoDB.
-
-────────────────────
-### Input
-You receive a JSON payload with at least these keys:
-
-{
-  "from":        "<display name & email>",
-  "to":          "<comma-separated list>",
-  "cc":          "<nullable>",
-  "subject":     "<string>",
-  "date":        "<RFC-2822 timestamp>",
-  "plain_body":  "<string>",        // canonical source for NLP
-  "html_body":   "<string|null>",
-  "attachments": [
-    { "filename": "...", "s3_key": "..." }
-  ]
-}
-
-────────────────────
-### Output
-Respond **only** with valid JSON using this schema:
-
-{
-  "summary":        "<≤ 60 words>",
-  "category":       "<one term from list above>",
-  "sentiment":      "<Positive|Neutral|Negative|Mixed>",
-  "is_urgent":      <true|false>,
-  "key_dates":      ["<ISO-8601>", ...],
-  "amounts":        ["<100 USD>", ...],
-  "action_items":   ["<string>", ...],
-  "entities":       ["<Acme Corp>", "<John Doe>", ...],
-  "links":          ["https://...", ...],
-  "attachments":    ["invoice.pdf", "photo.jpg"]
-}
-
-────────────────────
-### Processing guidelines
-1. **Prefer `plain_body`** for analysis; fall back to stripped `html_body`
-   if needed.
-2. When multiple addresses appear in *To* or *Cc*, list them all in extracted
-   entities but pick the first address as the primary “user”.
-3. Redact PII in the summary if the message is obviously spam or phishing.
-4. For monetary amounts, capture the **original currency symbol or code**.
-5. Treat emoji or casual language as sentiment clues (🙂 → positive, 😡 → negative).
-6. If no meaningful items exist for a field (`key_dates`, `amounts`, …)
-   return an **empty array**, not `null`.
-7. Never hallucinate facts; base every extraction on explicit text in the e-mail.
-
-────────────────────
-### Error handling
-If the body is empty or unparsable, return:
-
-{ "error": "EmptyMessage" }
-
-Always strive for precise, context-aware extractions and compact, actionable summaries.
-"""
 
 
 def _get(part):
@@ -109,9 +32,11 @@ def _get(part):
 
 @event_source(data_class=S3Event)
 @logger.inject_lambda_context
-@tracer.capture_lambda_handler
+
 def lambda_handler(event: S3Event, context):
     logger.info(f"Raw S3 event {event}")
+    trace_id = f"Root=1-{uuid.uuid4().hex[:8]}-{uuid.uuid4().hex[:24]}"
+    logger.info(f"using traceId={trace_id} len={len(trace_id)}")
 
     for record in event.records:
         logger.info(f"Record: {record}")
@@ -129,12 +54,12 @@ def lambda_handler(event: S3Event, context):
         msg = BytesParser(policy=policy.default).parsebytes(raw_email)
 
         out = {
-            "from": msg.get("from"),
-            "to": msg.get("to"),
-            "cc": msg.get("cc"),
-            "bcc": msg.get("bcc"),
+            "from": msg.get("from",""),
+            "to": msg.get("to",""),
+            "cc": msg.get("cc",""),
+            "bcc": msg.get("bcc",""),
             "subject": msg.get("subject"),
-            "date": msg.get("date"),
+            "date": msg.get("date",""),
             "messageId": msg.get("message-id"),
             "plainBody": "",
             "htmlBody": "",
@@ -162,22 +87,57 @@ def lambda_handler(event: S3Event, context):
                 out["htmlBody"] = data
 
         addrs = [addr for _name, addr in utils.getaddresses([out["to"] or ""])]
-        addrs[0] if addrs else "unknown@example.com"
+        to_addr = addrs[0] if addrs else "unknown@example.com"
 
         name, addr = utils.parseaddr(msg.get("from"))
         out["fromName"] = name
         out["from"] = addr
 
         logger.info("Parsed e-mail", email_metadata=out)
-
-        url = "https://mp8bdmaxpf.us-east-1.awsapprunner.com/publish_event"
-
-        headers = {"Content-Type": "application/json"}
+        item = {
+            "PK": f"USER#{to_addr}",
+            "SK": f"EMAIL#{unique_email_id}#{out['messageId'].strip('<>')}",
+            "entity": "EMAIL",
+            "userId": to_addr,
+            "direction": "INBOUND",
+            **out,
+        }
 
         try:
-            requests.post(url, headers=headers, json=out)
+            payload_bytes = json.dumps(out).encode("utf-8")
 
-            logger.info("sent events to dapr agents")
+            rsp = agent_core.invoke_agent_runtime(
+                agentRuntimeArn="arn:aws:bedrock-agentcore:us-east-1:132260253285:runtime/email_agent-SBj8UMELez",
+                payload=payload_bytes
+            )
 
-        except requests.exceptions.RequestException:
-            logger.info(" exception occured at {e}")
+            body_bytes = rsp["response"].read()
+            logger.info(f"Agent response {body_bytes}")
+
+
+            json_response = json.loads(body_bytes.decode("utf-8"))
+              
+            logger.info(f"Agent response is {json_response}")
+
+            if isinstance(json_response, str):
+                json_response = json.loads(json_response)
+    
+
+       
+
+
+            item["aiInsights"] = json_response
+            item["GSI1PK"] = f"USER#{to_addr}"
+            item["GSI1SK"] = f"CATEGORY#{json_response['category']}"
+            item["GSI2PK"] = f"USER#{to_addr}"
+            item["GSI2SK"] = f"SENTIMENT#{json_response['sentiment']}"
+            logger.info(f"Agent response item {item}")
+
+            dynamodb_response = table.put_item(Item=item)
+            logger.info(f"DynamoDB response {dynamodb_response}")
+        except Exception as e:
+            logger.error(f"Error processing e-mail agent {e}")
+            # logger.error(f"DynamoDB error {e}")
+            raise e
+
+

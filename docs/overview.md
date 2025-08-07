@@ -9,7 +9,11 @@ urgent messages.
 
 By the end of this workshop, you'll be able to:
 
-- Parse emails into structured JSON.
+- Configure a route53
+
+  1.Build An AI agent with AWS AgentCore which :
+
+- Parses emails into structured JSON.
 - Generate succinct summaries of emails.
 - Classify emails into meaningful categories.
 - Perform sentiment analysis.

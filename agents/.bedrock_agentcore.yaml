@@ -1,0 +1,30 @@
+default_agent: email_agent
+agents:
+  email_agent:
+    name: email_agent
+    entrypoint: /Users/rosius/Documents/ai_email_client_backend/agents/email_agent.py
+    platform: linux/arm64
+    container_runtime: docker
+    aws:
+      execution_role: arn:aws:iam::132260253285:role/agentcore-email_agent-role
+      execution_role_auto_create: false
+      account: '132260253285'
+      region: us-east-1
+      ecr_repository: 132260253285.dkr.ecr.us-east-1.amazonaws.com/bedrock-agentcore-email_agent
+      ecr_auto_create: false
+      network_configuration:
+        network_mode: PUBLIC
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: email_agent-SBj8UMELez
+      agent_arn: arn:aws:bedrock-agentcore:us-east-1:132260253285:runtime/email_agent-SBj8UMELez
+      agent_session_id: null
+    codebuild:
+      project_name: bedrock-agentcore-email_agent-builder
+      execution_role: arn:aws:iam::132260253285:role/AmazonBedrockAgentCoreSDKCodeBuild-us-east-1-3c4ac41b94
+      source_bucket: bedrock-agentcore-codebuild-sources-132260253285-us-east-1
+    authorizer_configuration: null
+    oauth_configuration: null

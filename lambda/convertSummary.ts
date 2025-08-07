@@ -5,12 +5,11 @@ import {
 } from "@aws-lambda-powertools/batch";
 import { Logger } from "@aws-lambda-powertools/logger";
 import { Tracer } from "@aws-lambda-powertools/tracer";
-
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { sdkStreamMixin } from "@smithy/util-stream"; // ✅ new helper
+import { sdkStreamMixin } from "@smithy/util-stream";
 import type { DynamoDBRecord, DynamoDBStreamHandler } from "aws-lambda";
 import { Readable } from "node:stream";
 import { v4 as uuid } from "uuid";
@@ -26,11 +25,9 @@ const s3 = tracer.captureAWSv3Client(new S3Client());
 
 const { TABLE_NAME = "", BUCKET_NAME = "", REGION = "" } = process.env;
 
-// Process each stream record
-
 const recordHandler = async (record: DynamoDBRecord): Promise<void> => {
   const newImage = record.dynamodb?.NewImage;
-  if (!newImage) return; // nothing to do
+  if (!newImage) return;
 
   const PK = newImage.PK.S!;
   const SK = newImage.SK.S!;
@@ -48,7 +45,7 @@ const recordHandler = async (record: DynamoDBRecord): Promise<void> => {
       Text: summaryText,
     })
   );
-  if (!AudioStream) throw new Error("Polly returned empty AudioStream");
+  if (!AudioStream) throw new Error("Polly will returned an empty AudioStream");
 
   //Stream → Buffer with @smithy/util‑stream
 

@@ -1,8 +1,29 @@
-*.js
-!jest.config.js
-*.d.ts
-node_modules
+# IDE files
+.idea/
 
-# CDK asset staging directory
-.cdk.staging
-cdk.out
+# macOS Finder metadata
+.DS_Store
+
+# Keep your Jest config
+!jest.config.js
+
+# TypeScript declaration files
+*.d.ts
+
+# Node.js dependencies
+node_modules/
+
+# YAML files
+*.yaml
+
+# Python virtual environment
+.venv/
+
+# Python bytecode caches
+__pycache__/
+**/__pycache__/
+
+# CDK asset staging & output
+.cdk.staging/
+cdk.out/
+

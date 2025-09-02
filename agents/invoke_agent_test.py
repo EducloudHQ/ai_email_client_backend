@@ -14,13 +14,16 @@ agent_core = boto3.client("bedrock-agentcore", region_name=REGION)
 with JSON_PATH.open("r", encoding="utf-8") as f:
     sample = json.load(f)
 
+sample.pop("htmlBody", None)
 
-payload_bytes = json.dumps(sample).encode("utf-8")
+payload_bytes = json.dumps(sample)
+
+# print(payload_bytes)
 
 rsp = agent_core.invoke_agent_runtime(
     agentRuntimeArn=RUNTIME_ARN,
     payload=payload_bytes,
-    traceId="Root=1-6893d561-0d48800a0aeffdf26f20c129"
+    traceId="Root=1-6893d561-0d48800a0aeffdf26f20c129",
 )
 
 # Check HTTP status (optional)
@@ -30,7 +33,7 @@ assert rsp["statusCode"] == 200  # or rsp["ResponseMetadata"]["HTTPStatusCode"]
 body_bytes = rsp["response"].read()
 
 result = json.loads(body_bytes.decode("utf-8"))
-print(result) 
+print(result)
 
 # ④ Grab any diagnostics you need
 session_id = rsp["runtimeSessionId"]

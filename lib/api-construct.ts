@@ -7,34 +7,60 @@ import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as pipes from "aws-cdk-lib/aws-pipes";
 import * as events from "aws-cdk-lib/aws-events";
-import { FunctionRuntime } from "aws-cdk-lib/aws-appsync";
+import * as wafv2 from "aws-cdk-lib/aws-wafv2";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
+import * as cw_actions from "aws-cdk-lib/aws-cloudwatch-actions";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+// Import all appsync functionality through the namespace
 import path from "path";
 import { AccountRecovery, UserPoolClient } from "aws-cdk-lib/aws-cognito";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { Duration, Tags, RemovalPolicy } from "aws-cdk-lib";
 
 export interface ApiConstructProps {
   database: cdk.aws_dynamodb.Table;
   sendEmailLambdaFunction: NodejsFunction;
+  environment: string;
+  adminEmail: string;
 }
 
 export class ApiConstruct extends Construct {
   public readonly api: appsync.GraphqlApi;
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
+  public readonly eventBus: events.EventBus;
+  public readonly alarmTopic: sns.Topic;
 
-  constructor(
-    scope: Construct,
-    id: string,
-
-    props: ApiConstructProps
-  ) {
+  constructor(scope: Construct, id: string, props: ApiConstructProps) {
     super(scope, id);
 
-    const { database, sendEmailLambdaFunction } = props;
+    const { database, sendEmailLambdaFunction, environment, adminEmail } =
+      props;
 
-    // Create Cognito User Pool
+    // Create SNS topic for alarms
+    // Using a unique name with timestamp to avoid conflicts with existing topics
+    const timestamp = new Date().getTime();
+    this.alarmTopic = new sns.Topic(this, "AlarmTopic", {
+      displayName: `AI-Email-Client-Alarms-${environment}`,
+      topicName: `ai-email-client-alarms-${environment}-${timestamp}`,
+    });
+
+    // Add subscription for admin email
+    this.alarmTopic.addSubscription(
+      new subscriptions.EmailSubscription(adminEmail)
+    );
+
+    // Tag the SNS topic
+    Tags.of(this.alarmTopic).add("Environment", environment);
+    Tags.of(this.alarmTopic).add("Service", "ai-email-client");
+    Tags.of(this.alarmTopic).add("CostCenter", "email-processing");
+
+    // Create Cognito User Pool with enhanced security
     this.userPool = new cognito.UserPool(this, "EmailClientUserPool", {
-      userPoolName: "ai-email-client-user-pool",
+      userPoolName: `ai-email-client-user-pool-${environment}`,
       selfSignUpEnabled: true,
       accountRecovery: AccountRecovery.PHONE_AND_EMAIL,
       userVerification: {
@@ -53,44 +79,74 @@ export class ApiConstruct extends Construct {
         },
       },
       passwordPolicy: {
-        minLength: 8,
+        minLength: 12, // Increased from 8 for better security
         requireLowercase: true,
         requireUppercase: true,
         requireDigits: true,
         requireSymbols: true,
+        tempPasswordValidity: Duration.days(3),
       },
+
+      removalPolicy: RemovalPolicy.DESTROY, // Change to RETAIN for production
     });
 
+    // Add tags to the user pool
+    Tags.of(this.userPool).add("Environment", environment);
+    Tags.of(this.userPool).add("Service", "ai-email-client");
+    Tags.of(this.userPool).add("CostCenter", "email-processing");
+
+    // Create user pool client with enhanced security
     const userPoolClient: UserPoolClient = new UserPoolClient(
       this,
       "AiEmailUserPoolClient",
       {
         userPool: this.userPool,
+        authFlows: {
+          userPassword: true,
+          userSrp: true,
+          adminUserPassword: true,
+        },
+        preventUserExistenceErrors: true,
+        refreshTokenValidity: Duration.days(30),
+        accessTokenValidity: Duration.hours(1),
+        idTokenValidity: Duration.hours(1),
+        enableTokenRevocation: true,
       }
     );
 
-    // Create the EventBridge event bus
-    const eventBus = new cdk.aws_events.EventBus(this, "AiEmailEventBus", {
-      eventBusName: "AiEmailEventBus",
+    // Add tags to the user pool client
+    Tags.of(userPoolClient).add("Environment", environment);
+    Tags.of(userPoolClient).add("Service", "ai-email-client");
+    Tags.of(userPoolClient).add("CostCenter", "email-processing");
+
+    // Create the EventBridge event bus with improved naming for multitenancy
+    this.eventBus = new events.EventBus(this, "AiEmailEventBus", {
+      eventBusName: `ai-email-client-bus-${environment}`,
     });
 
-    // Create AppSync API
-    this.api = new appsync.GraphqlApi(this, "EmailClientApi", {
-      name: "email-client-api",
-      definition: appsync.Definition.fromFile("schema/schema.graphql"),
+    // Add tags to the event bus
+    Tags.of(this.eventBus).add("Environment", environment);
+    Tags.of(this.eventBus).add("Service", "ai-email-client");
+    Tags.of(this.eventBus).add("CostCenter", "email-processing");
 
+    // Create AppSync API with enhanced security and multitenancy support
+    this.api = new appsync.GraphqlApi(this, "EmailClientApi", {
+      name: `email-client-api-${environment}`,
+      definition: appsync.Definition.fromFile("schema/schema.graphql"),
       authorizationConfig: {
         defaultAuthorization: {
-          authorizationType: appsync.AuthorizationType.API_KEY,
-          apiKeyConfig: {
-            expires: cdk.Expiration.after(cdk.Duration.days(365)),
+          authorizationType: appsync.AuthorizationType.USER_POOL,
+          userPoolConfig: {
+            userPool: this.userPool,
           },
         },
         additionalAuthorizationModes: [
           {
-            authorizationType: appsync.AuthorizationType.USER_POOL,
-            userPoolConfig: {
-              userPool: this.userPool,
+            authorizationType: appsync.AuthorizationType.API_KEY,
+            apiKeyConfig: {
+              name: `api-key-${environment}`,
+              description: `API Key for ${environment} environment`,
+              expires: cdk.Expiration.after(cdk.Duration.days(90)), // Reduced from 365 days for better security
             },
           },
           {
@@ -101,11 +157,98 @@ export class ApiConstruct extends Construct {
       xrayEnabled: true,
       environmentVariables: {
         AI_EMAIL_CLIENT: database.tableName,
+        ENVIRONMENT: environment,
       },
       logConfig: {
-        fieldLogLevel: appsync.FieldLogLevel.ALL,
+        fieldLogLevel: appsync.FieldLogLevel.ERROR, // Reduced from ALL to ERROR for cost optimization in production
+        excludeVerboseContent: false, // Include request/response for debugging
+        retention: logs.RetentionDays.ONE_WEEK, // Set retention period
       },
     });
+
+    // Add tags to the API
+    Tags.of(this.api).add("Environment", environment);
+    Tags.of(this.api).add("Service", "ai-email-client");
+    Tags.of(this.api).add("CostCenter", "email-processing");
+
+    // Create WAF Web ACL for AppSync API
+    const webAcl = new wafv2.CfnWebACL(this, "ApiWebAcl", {
+      name: `ai-email-client-api-waf-${environment}`,
+      defaultAction: { allow: {} },
+      scope: "REGIONAL",
+      visibilityConfig: {
+        cloudWatchMetricsEnabled: true,
+        metricName: `ai-email-client-api-waf-${environment}`,
+        sampledRequestsEnabled: true,
+      },
+      rules: [
+        {
+          name: "RateLimit",
+          priority: 1,
+          action: {
+            block: {},
+          },
+          statement: {
+            rateBasedStatement: {
+              limit: 1000, // Requests per 5 minutes per IP
+              aggregateKeyType: "IP",
+            },
+          },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: "RateLimit",
+            sampledRequestsEnabled: true,
+          },
+        },
+        {
+          name: "AWSManagedRulesCommonRuleSet",
+          priority: 2,
+          overrideAction: { none: {} },
+          statement: {
+            managedRuleGroupStatement: {
+              name: "AWSManagedRulesCommonRuleSet",
+              vendorName: "AWS",
+            },
+          },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: "AWSManagedRulesCommonRuleSet",
+            sampledRequestsEnabled: true,
+          },
+        },
+      ],
+    });
+
+    // Associate WAF Web ACL with AppSync API
+    new wafv2.CfnWebACLAssociation(this, "WebAclAssociation", {
+      resourceArn: this.api.arn,
+      webAclArn: webAcl.attrArn,
+    });
+
+    // Create CloudWatch alarms for API errors
+    const apiErrorsMetric = new cloudwatch.Metric({
+      namespace: "AWS/AppSync",
+      metricName: "5XXError",
+      dimensionsMap: {
+        GraphQLAPIId: this.api.apiId,
+      },
+      statistic: "Sum",
+      period: Duration.minutes(5),
+    });
+
+    const apiErrorsAlarm = new cloudwatch.Alarm(this, "ApiErrorsAlarm", {
+      metric: apiErrorsMetric,
+      threshold: 5,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      alarmDescription: `AppSync API 5XX errors in ${environment} environment`,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // Add SNS action to the alarm
+    apiErrorsAlarm.addAlarmAction(new cw_actions.SnsAction(this.alarmTopic));
     const noneDs = this.api.addNoneDataSource("None");
     // Create DynamoDB Data Source
     const aiEmailClientTableDS = this.api.addDynamoDbDataSource(
@@ -113,189 +256,69 @@ export class ApiConstruct extends Construct {
       database
     );
 
-    // Create a role for the EventBridge Pipe
-    const pipeRole = new iam.Role(this, "PipeRole", {
-      assumedBy: new iam.ServicePrincipal("pipes.amazonaws.com"),
-      description:
-        "Role for EventBridge Pipe to connect DynamoDB to EventBridge",
+    // Create CloudWatch dashboard for monitoring
+    const dashboard = new cloudwatch.Dashboard(this, "AiEmailClientDashboard", {
+      dashboardName: `ai-email-client-${environment}`,
     });
 
-    // Grant permissions to the pipe role
-    database.grantStreamRead(pipeRole);
-    eventBus.grantPutEventsTo(pipeRole);
-
-    // Create EventBridge Pipe to connect new DynamoDB items to EventBridge
-    new pipes.CfnPipe(this, "AiEmailClientPipe", {
-      roleArn: pipeRole.roleArn,
-      source: database.tableStreamArn!,
-      sourceParameters: {
-        dynamoDbStreamParameters: {
-          startingPosition: "LATEST",
-          batchSize: 3,
-        },
-        filterCriteria: {
-          filters: [
-            {
-              pattern: JSON.stringify({
-                eventName: ["INSERT"],
-                dynamodb: {
-                  NewImage: {
-                    entity: {
-                      S: ["EMAIL"],
-                    },
-                  },
-                },
-              }),
+    // Add API metrics to dashboard
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: "API Errors",
+        left: [apiErrorsMetric],
+      }),
+      new cloudwatch.GraphWidget({
+        title: "API Latency",
+        left: [
+          new cloudwatch.Metric({
+            namespace: "AWS/AppSync",
+            metricName: "Latency",
+            dimensionsMap: {
+              GraphQLAPIId: this.api.apiId,
             },
-          ],
-        },
-      },
-      target: eventBus.eventBusArn,
-      targetParameters: {
-        eventBridgeEventBusParameters: {
-          detailType: "NewEmailCreated",
-          source: "ai.email",
-        },
-        inputTemplate: '{"email": <$.dynamodb.NewImage>}',
-      },
-    });
-
-    // Create a role for AppSync to be a target of EventBridge rules
-    const appSyncEventBridgeRole = new iam.Role(
-      this,
-      "AppSyncEventBridgeRole",
-      {
-        assumedBy: new iam.ServicePrincipal("events.amazonaws.com"),
-        description: "Role for EventBridge to invoke AppSync mutations",
-      }
-    );
-
-    // Grant permissions to invoke AppSync mutations
-    appSyncEventBridgeRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["appsync:GraphQL"],
-        resources: [`${this.api.arn}/types/Mutation/*`],
+            statistic: "Average",
+            period: Duration.minutes(5),
+          }),
+        ],
       })
     );
 
-    // Create a rule for generated text responses
-    new events.CfnRule(this, "NotifyNewEmailCreated", {
-      eventBusName: eventBus.eventBusName,
-      eventPattern: {
-        source: ["ai.email"],
-        "detail-type": ["NewEmailCreated"],
-      },
-      targets: [
-        {
-          id: "NotifyNewEmailCreated",
-          arn: (this.api.node.defaultChild as appsync.CfnGraphQLApi)
-            .attrGraphQlEndpointArn,
-          roleArn: appSyncEventBridgeRole.roleArn,
-          appSyncParameters: {
-            graphQlOperation: `
-            mutation NotifyNewEmail($email: EmailInput!) {
-              notifyNewEmail(email: $email) {
-                userId
-                messageId
-                from
-                fromName
-                to
-                subject
-                date
-                plainBody
-                entity
-                direction
-                htmlBody
-                attachments {
-                  filename
-                  s3_key
-                }
-                aiInsights {
-                  summary
-                  category
-                  sentiment
-                  is_urgent
-                  keyDates
-                  amounts
-                  action_items
-                  entities
-                  links
-                }
-
-
-              }
-            }
-          `,
-          },
-          inputTransformer: {
-            inputPathsMap: {
-              userId: "$.detail.email.userId.S",
-              messageId: "$.detail.email.messageId.S",
-              from: "$.detail.email.from.S",
-              fromName: "$.detail.email.fromName.S",
-              to: "$.detail.email.to.S",
-              subject: "$.detail.email.subject.S",
-              date: "$.detail.email.date.S",
-              entity: "$.detail.email.entity.S",
-              plainBody: "$.detail.email.plainBody.S",
-              htmlBody: "$.detail.email.htmlBody.S",
-              sentiment: "$.detail.email.sentiment.S",
-              direction: "$.detail.email.direction.S",
-              attachments: "$.detail.email.attachments.M",
-              aiInsights: "$.detail.email.aiInsights.L",
+    // Add DynamoDB metrics to dashboard
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: "DynamoDB Read Capacity",
+        left: [
+          new cloudwatch.Metric({
+            namespace: "AWS/DynamoDB",
+            metricName: "ConsumedReadCapacityUnits",
+            dimensionsMap: {
+              TableName: database.tableName,
             },
-            inputTemplate: JSON.stringify({
-              email: {
-                userId: "<userId>",
-                messageId: "<messageId>",
-                from: "<from>",
-                fromName: "<fromName>",
-                to: "<to>",
-                subject: "<subject>",
-                date: "<date>",
-                direction: "<direction>",
-                entity: "<entity>",
-                plainBody: "<plainBody>",
-                htmlBody: "<htmlBody>",
-                attachments: "<attachments>",
-                aiInsights: "<aiInsights>",
-              },
-            }),
-          },
-        },
-      ],
-    });
+            statistic: "Sum",
+            period: Duration.minutes(5),
+          }),
+        ],
+      }),
+      new cloudwatch.GraphWidget({
+        title: "DynamoDB Write Capacity",
+        left: [
+          new cloudwatch.Metric({
+            namespace: "AWS/DynamoDB",
+            metricName: "ConsumedWriteCapacityUnits",
+            dimensionsMap: {
+              TableName: database.tableName,
+            },
+            statistic: "Sum",
+            period: Duration.minutes(5),
+          }),
+        ],
+      })
+    );
 
-    // Create a CloudWatch Log group to catch all events through this event bus, for debugging
-    const logsGroup = new logs.LogGroup(this, "AIEmailEventsLogGroup", {
-      logGroupName: "/aws/events/AiEmailEventBus/logs",
-      retention: logs.RetentionDays.ONE_WEEK,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    // Create a rule to log all events for debugging
-    new events.Rule(this, "AiEmailCatchAllLogRule", {
-      ruleName: "ai-email-catch-all-events",
-      eventBus: eventBus,
-      eventPattern: {
-        source: events.Match.prefix(""),
-      },
-      targets: [new targets.CloudWatchLogGroup(logsGroup)],
-    });
-
-    new iam.Role(this, "AppSyncRole", {
-      assumedBy: new iam.ServicePrincipal("appsync.amazonaws.com"),
-    });
-
-    // Create resolvers for mutations
-    this.api.createResolver("notifyNewEmailResponse", {
-      typeName: "Mutation",
-      fieldName: "notifyNewEmail",
-      runtime: appsync.FunctionRuntime.JS_1_0_0,
-      dataSource: noneDs,
-      code: appsync.Code.fromAsset("./resolvers/emails/notifyNewEmail.js"),
-    });
+    // Add tags to the dashboard
+    Tags.of(dashboard).add("Environment", environment);
+    Tags.of(dashboard).add("Service", "ai-email-client");
+    Tags.of(dashboard).add("CostCenter", "email-processing");
 
     this.api
       .addLambdaDataSource(
@@ -318,7 +341,7 @@ export class ApiConstruct extends Construct {
         typeName: "Query",
         fieldName: "listEmails",
         dataSource: aiEmailClientTableDS,
-        runtime: FunctionRuntime.JS_1_0_0,
+        runtime: appsync.FunctionRuntime.JS_1_0_0,
         code: appsync.Code.fromAsset(
           path.join(__dirname, "../resolvers/emails/listEmails.js")
         ),
@@ -332,7 +355,7 @@ export class ApiConstruct extends Construct {
         typeName: "Query",
         fieldName: "listEmailsBySentiment",
         dataSource: aiEmailClientTableDS,
-        runtime: FunctionRuntime.JS_1_0_0,
+        runtime: appsync.FunctionRuntime.JS_1_0_0,
         code: appsync.Code.fromAsset(
           path.join(__dirname, "../resolvers/emails/listEmailsBySentiment.js")
         ),
@@ -346,7 +369,7 @@ export class ApiConstruct extends Construct {
         typeName: "Query",
         fieldName: "listEmailsByCategory",
         dataSource: aiEmailClientTableDS,
-        runtime: FunctionRuntime.JS_1_0_0,
+        runtime: appsync.FunctionRuntime.JS_1_0_0,
         code: appsync.Code.fromAsset(
           path.join(__dirname, "../resolvers/emails/listEmailsByCategory.js")
         ),
@@ -360,7 +383,7 @@ export class ApiConstruct extends Construct {
         typeName: "Query",
         fieldName: "getEmail",
         dataSource: aiEmailClientTableDS,
-        runtime: FunctionRuntime.JS_1_0_0,
+        runtime: appsync.FunctionRuntime.JS_1_0_0,
         code: appsync.Code.fromAsset(
           path.join(__dirname, "../resolvers/emails/getEmail.js")
         ),

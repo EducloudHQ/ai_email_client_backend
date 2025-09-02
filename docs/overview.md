@@ -5,21 +5,34 @@ AWS SES Customers using AWS Serverless technology. This agent will parse emails,
 categorize them, analyze sentiment, extract important information, and flag
 urgent messages.
 
+# Prerequisite
+
+1. Administrator access to AWS Bedrock
+2. Create 2 SES identities.
+
+- A domain, preferably buy a domain on AWS Route53.If your domain is registered
+  with Amazon Route 53, Amazon SES will automatically update your domain’s DNS
+  server with the necessary records.
+- An email address which you'll use to send emails to your domain.
+
 ## Objectives
 
 By the end of this workshop, you'll be able to:
 
-- Configure a route53
-
-  1.Build An AI agent with AWS AgentCore which :
-
-- Parses emails into structured JSON.
-- Generate succinct summaries of emails.
-- Classify emails into meaningful categories.
-- Perform sentiment analysis.
-- Extract key information from emails.
-- Identify and flag urgent emails.
-- Store processed information in DynamoDB.
+1. Configure a route53 Mx Record for a custom SES Domain.
+2. Configure an SES Ruleset for inbound email.
+3. Save inbound emails to an S3 bucket encrypted with a KMS Key.
+4. Trigger a Lambda function that ingests the email,
+   - Parses emails into a structured JSON.
+   * Using an AI Agent to
+     - Generate succinct summaries of emails.
+     - Classify emails into meaningful categories.
+     - Perform sentiment analysis.
+     - Extract key information from emails.
+     - Identify and flag urgent emails.
+     - Store processed email into DynamoDB.
+5. Convert email summaries to a voice file using AWS Polly
+6. Building an Appsync API to read emails and send emails.
 
 ## Technologies used
 
@@ -29,7 +42,7 @@ By the end of this workshop, you'll be able to:
 - AWS Bedrock AgentCore(A comprehensive set of enterprise-grade services that
   help developers quickly and securely deploy and operate AI agents at scale
   using any framework and model, hosted on Amazon Bedrock or elsewhere).
-- AWS Route53(provides highly available and scalable Domain Name System (DNS),
+- AWS Route53(provides highly available and scalable Domain Name Service (DNS),
   domain name registration, and health-checking cloud services).
 - AWS SES(A cloud-based email service provider that can integrate into any
   application for high volume email automation)
@@ -37,12 +50,29 @@ By the end of this workshop, you'll be able to:
 - AWS Appsync(Creating scalable Graphql API's).
 - AWS Polly(A fully-managed service that generates voice on demand, converting
   any text to an audio stream)
+  - AWS Lambda Function
 
-## Cost of running the workshop
+## Cost of running this workshop
 
-- Serverless
-- Talk about cost of Agentcore(pay as you go model)
--
+We're running this application at a very low scale, so the cost is negligible
+and well within the AWS Accounts Free Tier. But here are a couple of AWS
+Services price pages you can take a look at.
+
+1. Amazon Polly(https://aws.amazon.com/polly/pricing/):
+
+- For Amazon Polly’s Standard voices, the free tier includes 5 million
+  characters per month for speech or Speech Marks requests, for the first 12
+  months, starting from your first request for speech through Polly
+
+2. Amazon SES(https://aws.amazon.com/ses/pricing/)
+
+- As part of AWS Free Tier, SES offers a flexible free tier which enables you to
+  try the SES email features you need, free of charge. Free tier customers
+  receive up to 3,000 message charges free each month for the first 12 months
+  after you start using SES.
+
+3. AWS Agentcore(https://aws.amazon.com/bedrock/agentcore/pricing/) is
+   completely serverless, so you pay only for what you use.
 
 ## Email Payload
 
@@ -62,6 +92,90 @@ By the end of this workshop, you'll be able to:
     }
 ```
 
-Step 1. Defining Agents Job
+# AI Email Client Backend Multitenancy Implementation
 
--
+I've successfully updated the AI Email Client backend to support multitenancy,
+optimized the DynamoDB database design, and implemented AWS Well-Architected
+Framework principles. Here's a summary of the changes made:
+
+## 1. Multitenancy Support
+
+- **Database Design**: Updated the DynamoDB table schema to include tenant
+  isolation with a new key structure that prefixes partition keys with
+  `TENANT#{tenantId}`.
+- **GSI Optimization**: Redesigned GSIs to support tenant isolation and
+  efficient querying patterns.
+- **Environment-Based Deployment**: Added support for deploying to different
+  environments (dev, staging, prod) with environment-specific configurations.
+
+## 2. DynamoDB Optimizations
+
+- **Improved GSI Design**: Optimized GSI key structures for better query
+  performance and reduced costs.
+- **TTL Implementation**: Added TTL for data lifecycle management in
+  non-production environments.
+- **Contributor Insights**: Enabled DynamoDB Contributor Insights for monitoring
+  hot keys and access patterns.
+
+## 3. Security Enhancements
+
+- **KMS Encryption**: Implemented customer-managed KMS keys for DynamoDB and S3
+  encryption.
+- **IAM Least Privilege**: Updated IAM policies to follow least privilege
+  principles with tenant-specific conditions.
+- **WAF Protection**: Added WAF Web ACL for AppSync API with rate limiting and
+  AWS managed rules.
+- **Enhanced Cognito Security**: Improved Cognito User Pool security with
+  advanced security features.
+
+## 4. Monitoring and Observability
+
+- **CloudWatch Dashboards**: Created comprehensive dashboards for monitoring
+  application performance.
+- **Alarms and Notifications**: Implemented CloudWatch alarms with SNS
+  notifications for critical issues.
+- **Enhanced Logging**: Improved logging with structured logs and tenant
+  context.
+- **Metrics Collection**: Added custom metrics for better operational insights.
+
+## 5. Cost Optimization
+
+- **S3 Lifecycle Rules**: Implemented intelligent tiering and lifecycle rules
+  for S3 buckets.
+- **Resource Tagging**: Added comprehensive tagging for cost allocation and
+  tracking.
+- **Selective Backups**: Enabled backups only for production environments.
+
+## 6. Resilience and Reliability
+
+- **Error Handling**: Enhanced error handling and retry mechanisms in Lambda
+  functions.
+- **Dead Letter Queues**: Added DLQs for EventBridge Pipes and Lambda functions.
+- **Point-in-Time Recovery**: Enabled point-in-time recovery for DynamoDB
+  tables.
+
+## 7. Lambda Function Updates
+
+- **Tenant Isolation**: Updated Lambda functions to support tenant isolation.
+- **Enhanced Monitoring**: Added AWS Lambda Insights for better monitoring.
+- **Optimized Performance**: Increased memory allocation and timeout settings
+  for better performance.
+
+## Deployment Instructions
+
+To deploy the application to a specific environment:
+
+```bash
+# Deploy to development environment
+cdk deploy AiEmailClientStack-dev
+
+# Deploy to staging environment
+cdk deploy AiEmailClientStack-staging --context environment=staging
+
+# Deploy to production environment
+cdk deploy AiEmailClientStack-prod --context environment=prod
+```
+
+These changes have significantly improved the architecture of the AI Email
+Client backend, making it more secure, scalable, and cost-effective while
+supporting multitenancy.

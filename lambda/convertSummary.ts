@@ -8,7 +8,12 @@ import { Tracer } from "@aws-lambda-powertools/tracer";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  PutObjectCommand,
+  GetObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { sdkStreamMixin } from "@smithy/util-stream";
 import type { DynamoDBRecord, DynamoDBStreamHandler } from "aws-lambda";
 import { Readable } from "node:stream";
@@ -62,21 +67,32 @@ const recordHandler = async (record: DynamoDBRecord): Promise<void> => {
       Key: key,
       Body: audioBuffer,
       ContentType: "audio/mpeg",
-      ContentLength: audioBuffer.length, // ✅ fixes invalid‑header bug
+      ContentLength: audioBuffer.length,
     })
   );
 
-  // persist audio url back to dynamodb
+  // Generate a presigned URL for the uploaded audio file
+  const getObjectCommand = new GetObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+  });
+
+  // Create a presigned URL that expires in 7 days (604800 seconds)
+  const presignedUrl = await getSignedUrl(s3, getObjectCommand, {
+    expiresIn: 604800,
+  });
+
+  // persist presigned URL back to dynamodb
   await docClient.send(
     new UpdateCommand({
       TableName: TABLE_NAME,
       Key: { PK, SK },
       UpdateExpression: "SET aiInsights.summaryAudioUrl = :u",
-      ExpressionAttributeValues: { ":u": `s3://${BUCKET_NAME}/${key}` },
+      ExpressionAttributeValues: { ":u": presignedUrl },
     })
   );
 
-  logger.info("✓ Record processed", { PK, SK });
+  logger.info("Record processed", { PK, SK });
 };
 
 // stream‑processor Lambda handler

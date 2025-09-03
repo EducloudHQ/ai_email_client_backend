@@ -138,7 +138,7 @@ export class AiEmailClientStack extends cdk.Stack {
     );
     // Least‑privilege permissions
     database.aiEmailClientTable.grantReadWriteData(convertFn);
-    emailBucket.grantPut(convertFn);
+    emailBucket.grantReadWrite(convertFn);
     convertFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["polly:SynthesizeSpeech"],

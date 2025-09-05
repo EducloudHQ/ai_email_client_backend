@@ -4,4 +4,5 @@ bedrock-agentcore==0.1.2
 bedrock-agentcore-starter-toolkit
 boto3
 botocore
+aws-opentelemetry-distro>=0.10.1
 pytest

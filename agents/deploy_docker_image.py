@@ -36,7 +36,7 @@ response = agentcore_runtime.configure(
 )
 print(response)
 
-#deploy docker gile to agentruntime
+#deploy docker file to agentruntime
 launch_result = agentcore_runtime.launch()
 
 # check agent status

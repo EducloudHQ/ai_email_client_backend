@@ -6,11 +6,13 @@ from ksuid import Ksuid
 from email import policy, utils
 from email.parser import BytesParser
 from urllib.parse import unquote_plus
-from aws_lambda_powertools import Logger
+from aws_lambda_powertools import Logger, Tracer, Metrics
 from aws_lambda_powertools.utilities.data_classes import event_source, S3Event
 
 
-logger = Logger(service="email_parser")
+logger = Logger(service="ai_email_parser")
+tracer = Tracer(service="ai_email_parser")
+metrics = Metrics(namespace="ai_email_parser")
 
 
 agent_core = boto3.client("bedrock-agentcore", region_name='us-east-1')
@@ -32,11 +34,12 @@ def _get(part):
 
 @event_source(data_class=S3Event)
 @logger.inject_lambda_context
-
+@tracer.capture_lambda_handler
+@metrics.log_metrics(capture_cold_start_metric=True)
 def lambda_handler(event: S3Event, context):
     logger.info(f"Raw S3 event {event}")
-    trace_id = f"Root=1-{uuid.uuid4().hex[:8]}-{uuid.uuid4().hex[:24]}"
-    logger.info(f"using traceId={trace_id} len={len(trace_id)}")
+    session_id = f"Root=1-{uuid.uuid4().hex[:8]}-{uuid.uuid4().hex[:24]}"
+   
 
     for record in event.records:
         logger.info(f"Record: {record}")
@@ -104,11 +107,15 @@ def lambda_handler(event: S3Event, context):
         }
 
         try:
-            payload_bytes = json.dumps(out).encode("utf-8")
+             # Remove HTML body to reduce payload size
+            api_payload = out.copy()
+            api_payload.pop("htmlBody", None)
+            payload_bytes = json.dumps(api_payload).encode("utf-8")
 
             rsp = agent_core.invoke_agent_runtime(
                 agentRuntimeArn="arn:aws:bedrock-agentcore:us-east-1:132260253285:runtime/email_agent-SBj8UMELez",
-                payload=payload_bytes
+                payload=payload_bytes,
+                runtimeSessionId=session_id,
             )
 
             body_bytes = rsp["response"].read()
@@ -122,9 +129,6 @@ def lambda_handler(event: S3Event, context):
             if isinstance(json_response, str):
                 json_response = json.loads(json_response)
     
-
-       
-
 
             item["aiInsights"] = json_response
             item["GSI1PK"] = f"USER#{to_addr}"

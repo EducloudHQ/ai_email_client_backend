@@ -20,7 +20,7 @@ payload_bytes = json.dumps(sample).encode("utf-8")
 rsp = agent_core.invoke_agent_runtime(
     agentRuntimeArn=RUNTIME_ARN,
     payload=payload_bytes,
-    traceId="Root=1-6893d561-0d48800a0aeffdf26f20c129"
+    runtimeSessionId="Root=1-6893d561-0d487500a0aeffdf26f20c08908129"
 )
 
 # Check HTTP status (optional)
@@ -32,7 +32,7 @@ body_bytes = rsp["response"].read()
 result = json.loads(body_bytes.decode("utf-8"))
 print(result) 
 
-# ④ Grab any diagnostics you need
+# Grab any diagnostics you need
 session_id = rsp["runtimeSessionId"]
 trace_id = rsp["traceId"]
 print("session:", session_id, "trace:", trace_id)

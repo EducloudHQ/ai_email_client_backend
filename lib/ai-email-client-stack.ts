@@ -45,10 +45,7 @@ export class AiEmailClientStack extends cdk.Stack {
         minify: true,
       },
     });
-    const emailKey = new kms.Key(this, "EmailBucketKey", {
-      enableKeyRotation: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
+
     // Create the database stack
     const database = new DatabaseConstruct(this, "ai-email-Database");
 
@@ -63,9 +60,6 @@ export class AiEmailClientStack extends cdk.Stack {
       bucketName: `${this.account}-${this.region}-email-bucket`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       encryption: s3.BucketEncryption.S3_MANAGED,
-      //encryptionKey: emailKey,
-      //enforceSSL: true,
-      //versioned: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       lifecycleRules: [
         {
@@ -154,6 +148,7 @@ export class AiEmailClientStack extends cdk.Stack {
         actions: [
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream",
+          "bedrock:ListDataSources",
         ],
         resources: ["*"],
       })
@@ -167,7 +162,6 @@ export class AiEmailClientStack extends cdk.Stack {
         prefix: "emails/",
       }
     );
-    emailKey.grantDecrypt(emailProcessor);
 
     const hostedZone = route53.HostedZone.fromLookup(this, "Zone", {
       domainName: "846agents.com",
